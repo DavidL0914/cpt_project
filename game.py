@@ -1,133 +1,163 @@
 import pygame
 import random
 import math
+import sys
 
-# Initialize Pygame
 pygame.init()
 
-# Constants
-SCREEN_WIDTH, SCREEN_HEIGHT = 800, 600
-FPS = 60
-ASTEROID_SIZE = 64
+GALAXY_WIDTH, GALAXY_HEIGHT = 800, 600
+CLOCK_SPEED = 60
+SPACE_ROCK_SIZES = [30, 50, 70]
 
-# Colors
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
+COLOR_BLIND_WHITE = (255, 255, 255)
+VOID_BLACK = (0, 0, 0)
 
-# Setup the display
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Asteroid Game")
+space = pygame.display.set_mode((GALAXY_WIDTH, GALAXY_HEIGHT))
+pygame.display.set_caption("Cosmic Collision")
 
-# Load images
-ship_image = pygame.transform.scale(pygame.image.load('spaceship.png'), (50, 50))
-asteroid_image = pygame.image.load('asteroid.png')
+cosmic_cruiser = pygame.transform.scale(pygame.image.load('spaceship.png'), (50, 50))
+meteor_chunk = pygame.image.load('asteroid.png')
 
-# Ship class
-class Ship:
+universal_script = pygame.font.Font(None, 36)
+
+class SpaceFalcon:
     def __init__(self, x, y):
         self.x = x
         self.y = y
-    
-    def draw(self):
-        rotated_image = pygame.transform.rotate(ship_image, 0)
-        new_rect = rotated_image.get_rect(center=ship_image.get_rect(topleft=(self.x, self.y)).center)
-        screen.blit(rotated_image, new_rect.topleft)
+        self.spin = 0
 
-# Bullet class
-class Bullet:
+    def draw(self):
+        flipped_cruiser = pygame.transform.rotate(cosmic_cruiser, self.spin)
+        fresh_rect = flipped_cruiser.get_rect(center=(self.x, self.y))
+        space.blit(flipped_cruiser, fresh_rect.topleft)
+
+    def update(self, mouse_x, mouse_y):
+        rel_x, rel_y = mouse_x - self.x, mouse_y - self.y
+        self.spin = -(180 / math.pi * math.atan2(rel_y, rel_x)) - 90
+
+class LaserBeamOfDeath:
     def __init__(self, x, y, dx, dy):
         self.x = x
         self.y = y
         self.dx = dx
         self.dy = dy
-        self.radius = 5
-    
+        self.size = 5
+        self.rect = pygame.Rect(self.x - self.size, self.y - self.size, 2 * self.size, 2 * self.size)
+
     def move(self):
         self.x += self.dx
         self.y += self.dy
-    
-    def draw(self):
-        pygame.draw.circle(screen, WHITE, (int(self.x), int(self.y)), self.radius)
+        self.rect.center = (self.x, self.y)
 
-# Asteroid class
-class Asteroid:
-    def __init__(self, x, y, size):
+    def draw(self):
+        pygame.draw.circle(space, COLOR_BLIND_WHITE, (int(self.x), int(self.y)), self.size)
+
+class SpaceRock:
+    def __init__(self, x, y, size, dx, dy):
         self.x = x
         self.y = y
-        self.size = size
-        self.dx = random.uniform(-2, 2)
-        self.dy = random.uniform(-2, 2)
-    
+        self.mass = size
+        self.dx = dx
+        self.dy = dy
+        self.rect = pygame.Rect(self.x, self.y, self.mass, self.mass)
+
     def move(self):
         self.x += self.dx
         self.y += self.dy
-    
+        self.rect.center = (self.x, self.y)
+
     def draw(self):
-        asteroid_scaled = pygame.transform.scale(asteroid_image, (self.size, self.size))
-        screen.blit(asteroid_scaled, (self.x, self.y))
+        scaled_rock = pygame.transform.scale(meteor_chunk, (self.mass, self.mass))
+        space.blit(scaled_rock, self.rect.topleft)
 
-# Game initialization
-ship = Ship(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
-bullets = []
-asteroids = []
+cosmic_falcon = SpaceFalcon(GALAXY_WIDTH // 2, GALAXY_HEIGHT // 2)
+death_rays = []
+space_rocks = []
+galactic_credits = 0
+cosmic_timer = 0
 
-# Helper functions
-def handle_bullets():
-    for bullet in bullets[:]:
-        bullet.move()
-        if bullet.x < 0 or bullet.x > SCREEN_WIDTH or bullet.y < 0 or bullet.y > SCREEN_HEIGHT:
-            bullets.remove(bullet)
+def create_space_rock():
+    cosmic_factor = min(cosmic_timer / 10000, 1)
+    density = (0.6 + 0.4 * cosmic_factor, 0.3, 0.1 + 0.2 * cosmic_factor)
+    mass = random.choices(SPACE_ROCK_SIZES, weights=density)[0]
+    side = random.choice(['left', 'right', 'top', 'bottom'])
+    if side == 'left':
+        x, y = -mass, random.randint(0, GALAXY_HEIGHT)
+    elif side == 'right':
+        x, y = GALAXY_WIDTH + mass, random.randint(0, GALAXY_HEIGHT)
+    elif side == 'top':
+        x, y = random.randint(0, GALAXY_WIDTH), -mass
+    else:
+        x, y = random.randint(0, GALAXY_WIDTH), GALAXY_HEIGHT + mass
+    dx, dy = cosmic_falcon.x - x, cosmic_falcon.y - y
+    distance = math.hypot(dx, dy)
+    speed_boost = 0.5 + 1.5 * cosmic_factor
+    dx, dy = (dx / distance) * random.uniform(speed_boost, speed_boost + 1), (dy / distance) * random.uniform(speed_boost, speed_boost + 1)
+    space_rocks.append(SpaceRock(x, y, mass, dx, dy))
+
+def manage_death_rays():
+    for death_ray in death_rays[:]:
+        death_ray.move()
+        if death_ray.x < 0 or death_ray.x > GALAXY_WIDTH or death_ray.y < 0 or death_ray.y > GALAXY_HEIGHT:
+            death_rays.remove(death_ray)
         else:
-            bullet.draw()
+            death_ray.draw()
 
-def handle_asteroids():
-    for asteroid in asteroids[:]:
-        asteroid.move()
-        if asteroid.x + asteroid.size < 0 or asteroid.x > SCREEN_WIDTH or asteroid.y + asteroid.size < 0 or asteroid.y > SCREEN_HEIGHT:
-            asteroids.remove(asteroid)
-        else:
-            asteroid.draw()
-
-def handle_collisions():
-    for bullet in bullets[:]:
-        for asteroid in asteroids[:]:
-            distance = math.sqrt((bullet.x - asteroid.x)**2 + (bullet.y - asteroid.y)**2)
-            if distance < asteroid.size / 2 + bullet.radius:
-                bullets.remove(bullet)
-                asteroids.remove(asteroid)
+def manage_space_rocks():
+    global galactic_credits
+    for rock in space_rocks[:]:
+        rock.move()
+        rock.draw()
+        falcon_rect = pygame.Rect(cosmic_falcon.x - 25, cosmic_falcon.y - 25, 50, 50)
+        if falcon_rect.colliderect(rock.rect):
+            print(f"Game Over! Your score was: {galactic_credits}")
+            pygame.quit()
+            sys.exit()
+        for death_ray in death_rays[:]:
+            if death_ray.rect.colliderect(rock.rect):
+                galactic_credits += 10
+                death_rays.remove(death_ray)
+                if rock.mass == 70:
+                    for _ in range(2):
+                        new_mass = rock.mass // 2
+                        new_dx, new_dy = random.uniform(-2, 2), random.uniform(-2, 2)
+                        new_rock = SpaceRock(rock.x, rock.y, new_mass, new_dx, new_dy)
+                        new_rock.rect.center = (rock.x, rock.y)
+                        space_rocks.append(new_rock)
+                space_rocks.remove(rock)
                 break
 
-# Main game loop
-clock = pygame.time.Clock()
-running = True
-while running:
-    screen.fill(BLACK)
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        if event.type == pygame.MOUSEBUTTONDOWN:
+def show_credits():
+    credits_text = universal_script.render(f"Score: {galactic_credits}", True, COLOR_BLIND_WHITE)
+    space.blit(credits_text, (GALAXY_WIDTH - 150, 10))
+
+cosmic_clock = pygame.time.Clock()
+still_flying = True
+while still_flying:
+    space.fill(VOID_BLACK)
+    for cosmic_event in pygame.event.get():
+        if cosmic_event.type == pygame.QUIT:
+            still_flying = False
+        if cosmic_event.type == pygame.MOUSEBUTTONDOWN:
             mx, my = pygame.mouse.get_pos()
-            dx, dy = mx - ship.x, my - ship.y
-            distance = math.hypot(dx, dy)
-            dx, dy = dx / distance, dy / distance
-            bullets.append(Bullet(ship.x, ship.y, dx * 10, dy * 10))
-    
-    ship.draw()
-    handle_bullets()
-    handle_asteroids()
-    handle_collisions()
-    
-    # Spawn new asteroids
-    if len(asteroids) < 10:
-        if random.random() < 0.02:
-            size = random.choice([30, 50, 70])
-            x, y = random.choice([(-size, random.randint(0, SCREEN_HEIGHT)),
-                                  (SCREEN_WIDTH + size, random.randint(0, SCREEN_HEIGHT)),
-                                  (random.randint(0, SCREEN_WIDTH), -size),
-                                  (random.randint(0, SCREEN_WIDTH), SCREEN_HEIGHT + size)])
-            asteroids.append(Asteroid(x, y, size))
-    
+            dx, dy = mx - cosmic_falcon.x, my - cosmic_falcon.y
+            range_to_target = math.hypot(dx, dy)
+            dx, dy = dx / range_to_target, dy / range_to_target
+            death_rays.append(LaserBeamOfDeath(cosmic_falcon.x, cosmic_falcon.y, dx * 10, dy * 10))
+
+    mx, my = pygame.mouse.get_pos()
+    cosmic_falcon.update(mx, my)
+    cosmic_falcon.draw()
+
+    manage_death_rays()
+    manage_space_rocks()
+    show_credits()
+
+    if random.random() < 0.01 * (1 + cosmic_timer / 60000):
+        create_space_rock()
+
     pygame.display.flip()
-    clock.tick(FPS)
+    cosmic_clock.tick(CLOCK_SPEED)
+    cosmic_timer += cosmic_clock.get_time()
 
 pygame.quit()
